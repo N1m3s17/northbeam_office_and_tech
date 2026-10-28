@@ -1,4 +1,4 @@
-CREATE OR ALTER PROCEDURE load_silver_inventory_clean
+CREATE OR ALTER PROCEDURE silver.load_silver_inventory_clean
 AS
 BEGIN
     SET NOCOUNT ON;
