@@ -1,0 +1,49 @@
+CREATE OR ALTER PROCEDURE silver.load_silver_sales_targets_clean
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        PRINT '===========================================================================';
+        PRINT 'Loading data into silver.sales_targets_clean table...';
+        PRINT '===========================================================================';
+
+        TRUNCATE TABLE silver.sales_targets_clean;
+        WITH typed as (
+             SELECT
+            coalesce(try_convert(date, trim([month]), 23), 
+            try_convert(date, trim([month]), 101), 
+            try_convert(date, trim([month]), 103), 
+            try_convert(date, LEFT(TRIM([month]), 3) + ' 01, 20' + RIGHT(TRIM([month]), 2), 107),
+            try_convert(date, trim([month]) + '-01')) as month_start,
+            upper(trim(store_name)) as store_name,
+            try_cast(nullif(replace(replace(replace(trim(target_revenue), ',',''), '$',''), 'CAD',''), '') as decimal(10,2)) as target_revenue
+            from 
+            bronze.sales_targets_raw
+        ), deduped as (
+            SELECT
+            month_start,
+            store_name,
+            target_revenue
+            from(
+                select *, ROW_NUMBER() over (partition by month_start, store_name order by case when target_revenue is null then 1 else 0 end) as rn
+                from typed
+            ) t where rn = 1
+        )
+        insert into silver.sales_targets_clean (
+            month_start, store_name, target_revenue
+        ) 
+        select
+            month_start,
+            store_name,
+            target_revenue
+            from deduped
+        PRINT 'Rows loaded: ' + CAST(@@ROWCOUNT AS VARCHAR(10));
+        PRINT 'Data loaded into silver.sales_targets_clean table.';
+    END TRY
+    BEGIN CATCH
+        PRINT 'Error occurred while loading data into silver.sales_targets_clean table.';
+        PRINT 'Error Number: '  + CAST(ERROR_NUMBER() AS VARCHAR(10));
+        PRINT 'Error Message: ' + ERROR_MESSAGE();
+        THROW;
+    END CATCH
+END;
